@@ -11,9 +11,12 @@ Run via cron or as a systemd service. See README.md for setup.
 """
 
 import os
+import sys
 import json
 import logging
 import requests
+import click
+from pathlib import Path
 from typing import Any, Protocol, cast
 from google.genai import Client, types
 from datetime import datetime, timedelta
@@ -25,10 +28,28 @@ from apscheduler.triggers.date import DateTrigger
 ############################################################################
 # Config
 ############################################################################
+
+def _load_dotenv() -> None:
+    """Load .env from the project root into os.environ (does not override existing vars)."""
+    env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.is_file():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+_load_dotenv()
+
 HA_URL        = os.environ.get("HA_URL", "http://homeassistant.local:8123")
 HA_TOKEN      = os.environ.get("HA_TOKEN", "")          # Long-lived HA token
 HA_NOTIFY     = os.environ.get("HA_NOTIFY_SERVICE", "notify.mobile_app_deepak_phone")
-GEMINI_KEY    = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL  = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 TIMEZONE      = os.environ.get("TIMEZONE", "America/Chicago")
 
@@ -38,7 +59,20 @@ logging.basicConfig(
 )
 log = logging.getLogger("lfc_agent")
 
-client = Client(api_key=GEMINI_KEY)
+_client: Client | None = None
+
+
+def get_client() -> Client:
+    """Return the Gemini client, creating it on first use."""
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            raise click.ClickException(
+                "GEMINI_API_KEY is not set. Add it to .env or export it in your shell."
+            )
+        _client = Client(api_key=api_key)
+    return _client
 
 
 class _GeminiModels(Protocol):
@@ -58,7 +92,7 @@ def _generate_content(
     config: types.GenerateContentConfig,
 ) -> types.GenerateContentResponse:
     """Call Gemini; Protocol narrows the SDK's partially-typed generate_content."""
-    models: _GeminiModels = cast(_GeminiModels, client.models)
+    models: _GeminiModels = cast(_GeminiModels, get_client().models)
     return models.generate_content(model=model, contents=contents, config=config)
 
 
@@ -122,18 +156,32 @@ def fetch_lfc_news_summary() -> str:
     return summary if summary else "No news summary available."
 
 
-def send_daily_news():
+def send_daily_news() -> str:
     """Morning routine: fetch news + send HA notification."""
     summary = fetch_lfc_news_summary()
-    # Truncate for phone notification (keep it readable)
+    send_news_notification(summary)
+    log.info("Daily news notification sent.")
+    return summary
+
+
+def send_news_notification(summary: str) -> str:
+    """Push a news summary to Home Assistant."""
     short = summary[:500] + "..." if len(summary) > 500 else summary
     ha_notify(
         title="🔴 LFC Daily Briefing",
         message=short,
-        data={"tag": "lfc_daily_news", "group": "lfc"}
+        data={"tag": "lfc_daily_news", "group": "lfc"},
     )
-    log.info("Daily news notification sent.")
     return summary
+
+
+def run_news_adhoc(*, notify: bool) -> None:
+    """Fetch today's news; print to stdout and optionally notify HA."""
+    summary = fetch_lfc_news_summary()
+    print(summary)
+    if notify:
+        send_news_notification(summary)
+        log.info("News notification sent.")
 
 
 ############################################################################
@@ -238,8 +286,8 @@ def refresh_fixtures(scheduler: BlockingScheduler):
         log.warning("No upcoming fixtures found.")
 
 
-def main():
-    """Main entry point."""
+def run_scheduler() -> None:
+    """Start the scheduled agent (news, fixtures, match alerts)."""
     tz = ZoneInfo(TIMEZONE)
     scheduler = BlockingScheduler(timezone=tz)
 
@@ -272,5 +320,29 @@ def main():
         log.info("LFC Agent stopped.")
 
 
+@click.group()
+def cli() -> None:
+    """LFC Daily Agent — news briefings and match notifications."""
+
+
+@cli.command()
+def run() -> None:
+    """Start the scheduled agent (default)."""
+    run_scheduler()
+
+
+@cli.command()
+@click.option(
+    "--notify",
+    is_flag=True,
+    help="Also push the summary to Home Assistant",
+)
+def news(notify: bool) -> None:
+    """Fetch today's LFC news summary and print to stdout."""
+    run_news_adhoc(notify=notify)
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 1:
+        sys.argv.append("run")
+    cli()

@@ -12,6 +12,7 @@ A lightweight AI agent that delivers daily Liverpool FC news summaries and match
 | **Daily News Brief**        | Every morning at **7:30 AM**, Gemini searches the web for the latest LFC news (results, transfers, injuries, manager quotes) and sends a summary to your phone |
 | **Match Day 8 AM Alert**    | On any match day, you get a morning reminder with kickoff time                                                                                                 |
 | **15-Min Kickoff Alert**    | 15 minutes before every match, a push notification fires                                                                                                       |
+| **Ad-hoc News**             | Run `python lfc_agent.py news` anytime for today's summary; add `--notify` to push to your phone                                                                 |
 | **Auto-refreshes fixtures** | Every day at 6 AM it re-fetches the next 14 days of fixtures and reschedules notifications                                                                     |
 
 
@@ -82,6 +83,19 @@ python lfc_agent.py
 ```
 
 You should see it fetch fixtures on startup and schedule jobs. Check your phone for any match-day notifications if a match is in the next 14 days.
+
+To fetch today's news on demand:
+
+```bash
+python lfc_agent.py news                # print summary to terminal
+python lfc_agent.py news --notify       # print + push to Home Assistant
+```
+
+With Docker:
+
+```bash
+docker compose run --rm lfc-agent python lfc_agent.py news
+```
 
 ### 5. Type checking (optional)
 
