@@ -1,13 +1,12 @@
 """
-LFC Daily Agent
----------------
-- Fetches daily Liverpool FC news via Gemini API (with Google Search)
-- Fetches upcoming LFC fixtures
-- Schedules Home Assistant notifications:
+Sports Team Daily Agent
+-----------------------
+- Fetches daily news via Gemini API (with Google Search) for configured teams
+- Fetches upcoming fixtures and schedules Home Assistant notifications:
     • 8:00 AM on match day
-    • 15 minutes before kickoff
+    • 15 minutes before start
 
-Run via cron or as a systemd service. See README.md for setup.
+Run via cron, Docker, or systemd. See README.md for setup.
 """
 
 import os
@@ -16,7 +15,6 @@ import json
 import logging
 import requests
 import click
-from pathlib import Path
 from typing import Any, Protocol, cast
 from google.genai import Client, types
 from datetime import datetime, timedelta
@@ -25,6 +23,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from teams import PROJECT_ROOT, Team, active_teams, load_teams
+
 ############################################################################
 # Config
 ############################################################################
@@ -32,7 +32,7 @@ from apscheduler.triggers.date import DateTrigger
 
 def _load_dotenv() -> None:
     """Load .env from the project root into os.environ (does not override existing vars)."""
-    env_path = Path(__file__).resolve().parent / ".env"
+    env_path = PROJECT_ROOT / ".env"
     if not env_path.is_file():
         return
     for line in env_path.read_text().splitlines():
@@ -57,7 +57,7 @@ TIMEZONE = os.environ.get("TIMEZONE", "America/Chicago")
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
-log = logging.getLogger("lfc_agent")
+log = logging.getLogger("sports_agent")
 
 _client: Client | None = None
 
@@ -110,6 +110,11 @@ def _gemini_web_search(user_prompt: str, system_instruction: str) -> str:
     return (response.text or "").strip()
 
 
+def _today_strings() -> tuple[str, str]:
+    now = datetime.now(ZoneInfo(TIMEZONE))
+    return now.strftime("%B %d, %Y"), now.strftime("%Y-%m-%d")
+
+
 ############################################################################
 # Home Assistant Notifications
 ############################################################################
@@ -138,98 +143,80 @@ def ha_notify(title: str, message: str, data: dict[str, Any] | None = None) -> N
 ############################################################################
 
 
-def fetch_lfc_news_summary() -> str:
-    """Use Gemini with Google Search to get today's LFC news summary."""
-    log.info("Fetching LFC news via Gemini...")
-    today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%B %d, %Y")
+def fetch_news_summary(team: Team) -> str:
+    """Use Gemini with Google Search to get today's news summary for a team."""
+    log.info("Fetching news for %s via Gemini...", team.name)
+    today_long, _ = _today_strings()
 
     summary = _gemini_web_search(
-        user_prompt=(
-            f"Search the web and give me a Liverpool FC daily news summary for {today}. "
-            "Include any recent match results, transfer news, injuries, and the next fixture."
-        ),
-        system_instruction=(
-            "You are a Liverpool FC news assistant. Your job is to search for the latest "
-            "Liverpool FC news and produce a concise daily briefing. "
-            "Focus on: match results, injuries, transfers, manager quotes, and upcoming fixtures. "
-            "Be factual, concise, and well-structured. Use bullet points. "
-            "Always end with the next upcoming match details if available."
-        ),
+        user_prompt=team.news_user_prompt(today_long),
+        system_instruction=team.news_system_instruction(),
     )
-
     return summary if summary else "No news summary available."
 
 
-def send_daily_news() -> str:
-    """Morning routine: fetch news + send HA notification."""
-    summary = fetch_lfc_news_summary()
-    send_news_notification(summary)
-    log.info("Daily news notification sent.")
-    return summary
-
-
-def send_news_notification(summary: str) -> str:
+def send_news_notification(team: Team, summary: str) -> str:
     """Push a news summary to Home Assistant."""
     short = summary[:500] + "..." if len(summary) > 500 else summary
     ha_notify(
-        title="🔴 LFC Daily Briefing",
+        title=team.briefing_title(),
         message=short,
-        data={"tag": "lfc_daily_news", "group": "lfc"},
+        data={"tag": team.ha_tag, "group": team.ha_group},
     )
     return summary
 
 
-def run_news_adhoc(*, notify: bool) -> None:
+def send_daily_news(team: Team) -> str:
+    """Morning routine: fetch news + send HA notification."""
+    summary = fetch_news_summary(team)
+    send_news_notification(team, summary)
+    log.info("Daily news notification sent for %s.", team.name)
+    return summary
+
+
+def run_news_adhoc(teams: list[Team], *, notify: bool) -> None:
     """Fetch today's news; print to stdout and optionally notify HA."""
-    summary = fetch_lfc_news_summary()
-    print(summary)
-    if notify:
-        send_news_notification(summary)
-        log.info("News notification sent.")
+    for index, team in enumerate(teams):
+        if index:
+            print()
+        if len(teams) > 1:
+            print(f"=== {team.name} ===")
+        summary = fetch_news_summary(team)
+        print(summary)
+        if notify:
+            send_news_notification(team, summary)
+            log.info("News notification sent for %s.", team.name)
 
 
-def fetch_lfc_fixtures() -> list[dict[str, str]]:
-    """
-    Use Gemini with Google Search to extract upcoming LFC fixtures.
-    Returns a list of dicts: [{opponent, kickoff_utc, competition}, ...]
-    """
-    log.info("Fetching LFC fixtures via Gemini...")
-    today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
+def fetch_fixtures(team: Team) -> list[dict[str, str]]:
+    """Use Gemini with Google Search to extract upcoming fixtures for a team."""
+    log.info("Fetching fixtures for %s via Gemini...", team.name)
+    _, today_short = _today_strings()
 
     raw = _gemini_web_search(
-        user_prompt=(
-            f"Search for Liverpool FC upcoming fixtures after {today}. "
-            "Return valid JSON array only."
-        ),
-        system_instruction=(
-            "You are a fixture data extractor. Search for Liverpool FC upcoming fixtures. "
-            "Respond ONLY with a valid JSON array. No preamble, no markdown fences. "
-            "Each element must have exactly these keys: "
-            "opponent (string), kickoff_utc (ISO8601 UTC datetime string), competition (string). "
-            "Include only matches in the next 14 days. Return [] if none found."
-        ),
+        user_prompt=team.fixtures_user_prompt(today_short),
+        system_instruction=team.fixtures_system_instruction(),
     )
 
     try:
         raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         fixtures = cast(list[dict[str, str]], json.loads(raw))
-        log.info(f"Parsed {len(fixtures)} upcoming fixtures.")
+        log.info("Parsed %d upcoming fixtures for %s.", len(fixtures), team.name)
         return fixtures
     except json.JSONDecodeError as e:
-        log.error(f"Failed to parse fixtures JSON: {e}\nRaw: {raw}")
+        log.error(
+            "Failed to parse fixtures JSON for %s: %s\nRaw: %s", team.name, e, raw
+        )
         return []
 
 
 def schedule_match_notifications(
-    scheduler: BlockingScheduler, fixtures: list[dict[str, str]]
+    scheduler: BlockingScheduler, team: Team, fixtures: list[dict[str, str]]
 ) -> None:
-    """
-    For each fixture, schedule:
-      1. A 8:00 AM notification on match day
-      2. A 15-min-before kickoff notification
-    """
+    """Schedule match-day and pre-start notifications for a team."""
     tz = ZoneInfo(TIMEZONE)
     now = datetime.now(tz)
+    match_line = team.match_phrase
 
     for fixture in fixtures:
         try:
@@ -240,8 +227,9 @@ def schedule_match_notifications(
 
             opponent = fixture.get("opponent", "Unknown")
             competition = fixture.get("competition", "")
+            matchup = match_line.format(opponent=opponent)
+            time_label = kickoff_local.strftime("%I:%M %p")
 
-            # ── 8 AM match day notification ──────────────────────────────────
             match_day_8am = kickoff_local.replace(
                 hour=8, minute=0, second=0, microsecond=0
             )
@@ -250,100 +238,154 @@ def schedule_match_notifications(
                     ha_notify,
                     trigger=DateTrigger(run_date=match_day_8am, timezone=tz),
                     args=[
-                        f"⚽ LFC Match Day!",
-                        f"Liverpool vs {opponent} today — {competition}.\n"
-                        f"Kickoff at {kickoff_local.strftime('%I:%M %p')} local time. YNWA! 🔴",
+                        team.match_day_title(),
+                        f"{matchup} today — {competition}.\n"
+                        f"{team.kickoff_label} at {time_label} local time. {team.emoji}",
                     ],
-                    id=f"matchday_{kickoff_local.date()}_{opponent}_8am",
+                    id=f"{team.id}_matchday_{kickoff_local.date()}_{opponent}_8am",
                     replace_existing=True,
                 )
                 log.info(
-                    f"Scheduled 8AM notification for {opponent} on {match_day_8am}"
+                    "Scheduled 8AM notification for %s vs %s on %s",
+                    team.name,
+                    opponent,
+                    match_day_8am,
                 )
 
-            # ── 15-min before kickoff notification ───────────────────────────
             pre_match = kickoff_local - timedelta(minutes=15)
             if pre_match > now:
                 scheduler.add_job(
                     ha_notify,
                     trigger=DateTrigger(run_date=pre_match, timezone=tz),
                     args=[
-                        f"🔴 Kickoff in 15 Minutes!",
-                        f"Liverpool vs {opponent} — {competition} starts at "
-                        f"{kickoff_local.strftime('%I:%M %p')}. Get ready! YNWA! 🏆",
+                        team.pre_match_title(),
+                        f"{matchup} — {competition} starts at {time_label}. "
+                        f"Get ready! {team.emoji}",
                     ],
-                    id=f"matchday_{kickoff_local.date()}_{opponent}_15min",
+                    id=f"{team.id}_matchday_{kickoff_local.date()}_{opponent}_15min",
                     replace_existing=True,
                 )
-                log.info(f"Scheduled 15-min notification for {opponent} at {pre_match}")
+                log.info(
+                    "Scheduled 15-min notification for %s vs %s at %s",
+                    team.name,
+                    opponent,
+                    pre_match,
+                )
 
         except Exception as e:
-            log.error(f"Error scheduling fixture {fixture}: {e}")
+            log.error("Error scheduling fixture for %s: %s — %s", team.name, fixture, e)
 
 
-def refresh_fixtures(scheduler: BlockingScheduler):
-    """Refresh fixtures every day and reschedule match notifications."""
-    fixtures = fetch_lfc_fixtures()
+def refresh_fixtures(scheduler: BlockingScheduler, team: Team) -> None:
+    """Refresh fixtures for one team and reschedule match notifications."""
+    fixtures = fetch_fixtures(team)
     if fixtures:
-        schedule_match_notifications(scheduler, fixtures)
+        schedule_match_notifications(scheduler, team, fixtures)
     else:
-        log.warning("No upcoming fixtures found.")
+        log.warning("No upcoming fixtures found for %s.", team.name)
+
+
+def refresh_all_fixtures(scheduler: BlockingScheduler) -> None:
+    """Refresh fixtures for all active teams."""
+    for team in active_teams():
+        refresh_fixtures(scheduler, team)
 
 
 def run_scheduler() -> None:
-    """Start the scheduled agent (news, fixtures, match alerts)."""
+    """Start the scheduled agent for all active teams."""
+    teams = active_teams()
+    if not teams:
+        raise click.ClickException(
+            "No active teams configured. Enable teams in teams.json or set TEAMS in .env."
+        )
+
     tz = ZoneInfo(TIMEZONE)
     scheduler = BlockingScheduler(timezone=tz)
 
-    # Daily news at 7:30 AM
-    scheduler.add_job(
-        send_daily_news,
-        trigger=CronTrigger(hour=7, minute=30, timezone=tz),
-        id="daily_lfc_news",
-        replace_existing=True,
-    )
-    log.info("Scheduled daily news at 7:30 AM")
+    for team in teams:
+        scheduler.add_job(
+            send_daily_news,
+            trigger=CronTrigger(hour=7, minute=30, timezone=tz),
+            args=[team],
+            id=f"{team.id}_daily_news",
+            replace_existing=True,
+        )
+        log.info("Scheduled daily news at 7:30 AM for %s", team.name)
 
-    # Refresh fixtures daily at 6:00 AM (before any match-day notifications)
     scheduler.add_job(
-        lambda: refresh_fixtures(scheduler),
+        refresh_all_fixtures,
         trigger=CronTrigger(hour=6, minute=0, timezone=tz),
+        args=[scheduler],
         id="daily_fixture_refresh",
         replace_existing=True,
     )
     log.info("Scheduled fixture refresh at 6:00 AM")
 
-    # Run fixture refresh immediately on startup
     log.info("Running initial fixture refresh...")
-    refresh_fixtures(scheduler)
+    refresh_all_fixtures(scheduler)
 
-    log.info("LFC Agent started. Press Ctrl+C to stop.")
+    team_names = ", ".join(team.name for team in teams)
+    log.info("Sports agent started for: %s. Press Ctrl+C to stop.", team_names)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
-        log.info("LFC Agent stopped.")
+        log.info("Sports agent stopped.")
+
+
+def _resolve_teams(team_ids: tuple[str, ...]) -> list[Team]:
+    try:
+        teams = active_teams(team_ids)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    if not teams:
+        raise click.ClickException("No enabled teams matched your selection.")
+    return teams
 
 
 @click.group()
 def cli() -> None:
-    """LFC Daily Agent — news briefings and match notifications."""
+    """Sports team agent — news briefings and match notifications."""
 
 
 @cli.command()
 def run() -> None:
-    """Start the scheduled agent (default)."""
+    """Start the scheduled agent for all active teams (default)."""
     run_scheduler()
+
+
+@cli.command("list-teams")
+def list_teams_cmd() -> None:
+    """List configured teams and whether they are active."""
+    env_filter = os.environ.get("TEAMS", "").strip()
+    active_ids = {team.id for team in active_teams()}
+    for team in load_teams():
+        if team.id in active_ids:
+            status = "active"
+        elif not team.enabled:
+            status = "disabled"
+        elif env_filter:
+            status = "filtered out by TEAMS"
+        else:
+            status = "inactive"
+        click.echo(f"{team.id}: {team.name} ({team.sport}) [{status}]")
 
 
 @cli.command()
 @click.option(
+    "--team",
+    "-t",
+    "team_ids",
+    multiple=True,
+    help="Team id from teams.json (repeatable). Default: all active teams.",
+)
+@click.option(
     "--notify",
     is_flag=True,
-    help="Also push the summary to Home Assistant",
+    help="Also push summaries to Home Assistant",
 )
-def news(notify: bool) -> None:
-    """Fetch today's LFC news summary and print to stdout."""
-    run_news_adhoc(notify=notify)
+def news(team_ids: tuple[str, ...], notify: bool) -> None:
+    """Fetch today's news summary and print to stdout."""
+    run_news_adhoc(_resolve_teams(team_ids), notify=notify)
 
 
 if __name__ == "__main__":

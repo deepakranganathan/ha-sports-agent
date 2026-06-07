@@ -8,6 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY lfc_agent.py .
+COPY src/ ./src/
+COPY teams.json .
 
-CMD ["python", "lfc_agent.py"]
+CMD ["python", "src/sports_agent.py"]

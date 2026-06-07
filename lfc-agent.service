@@ -1,14 +1,14 @@
 [Unit]
-Description=LFC Daily Agent
+Description=Sports Team Daily Agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=YOUR_USER
-WorkingDirectory=/opt/lfc_agent
-EnvironmentFile=/opt/lfc_agent/.env
-ExecStart=/opt/lfc_agent/venv/bin/python lfc_agent.py
+WorkingDirectory=/opt/sports_agent
+EnvironmentFile=/opt/sports_agent/.env
+ExecStart=/opt/sports_agent/venv/bin/python src/sports_agent.py
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal

@@ -1,20 +1,20 @@
-# Liverpool FC Daily Agent
+# Sports Team Daily Agent
 
-A lightweight AI agent that delivers daily Liverpool FC news summaries and match notifications to your phone via Home Assistant.
+A lightweight AI agent that delivers daily news summaries and match notifications for your favorite teams via Home Assistant.
+
+**Built-in teams:** Liverpool FC (football) and India men's cricket team. Add more in `teams.json`.
 
 ---
 
 ## What It Does
 
-
-| Feature                     | Details                                                                                                                                                        |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Daily News Brief**        | Every morning at **7:30 AM**, Gemini searches the web for the latest LFC news (results, transfers, injuries, manager quotes) and sends a summary to your phone |
-| **Match Day 8 AM Alert**    | On any match day, you get a morning reminder with kickoff time                                                                                                 |
-| **15-Min Kickoff Alert**    | 15 minutes before every match, a push notification fires                                                                                                       |
-| **Ad-hoc News**             | Run `python lfc_agent.py news` anytime for today's summary; add `--notify` to push to your phone                                                                 |
-| **Auto-refreshes fixtures** | Every day at 6 AM it re-fetches the next 14 days of fixtures and reschedules notifications                                                                     |
-
+| Feature | Details |
+| --- | --- |
+| **Daily News Brief** | Every morning at **7:30 AM**, Gemini searches the web for each active team's latest news and sends summaries to your phone |
+| **Match Day 8 AM Alert** | On match days, a morning reminder with start time |
+| **15-Min Pre-Start Alert** | 15 minutes before each fixture, a push notification fires |
+| **Ad-hoc News** | `python src/sports_agent.py news` for all teams, or `-t liverpool-fc` for one |
+| **Auto-refreshes fixtures** | Daily at 6 AM, re-fetches the next 14 days of fixtures per team |
 
 ---
 
@@ -23,8 +23,8 @@ A lightweight AI agent that delivers daily Liverpool FC news summaries and match
 - Python 3.11+
 - A free **Google Gemini API key** ([get one here](https://aistudio.google.com/apikey))
 - A running **Home Assistant** instance
-- **HA Companion App** installed on your phone (provides the `notify.mobile_app_`* service)
-- Network access from the agent host to your HA instance
+- **HA Companion App** on your phone (`notify.mobile_app_*`)
+- Network access from the agent host to Home Assistant
 
 ---
 
@@ -33,18 +33,18 @@ A lightweight AI agent that delivers daily Liverpool FC news summaries and match
 ### 1. Clone / copy the agent files
 
 ```bash
-mkdir -p /opt/lfc_agent
-cp lfc_agent.py requirements.txt Dockerfile /opt/lfc_agent/
+mkdir -p /opt/sports_agent
+cp -r src teams.json requirements.txt Dockerfile /opt/sports_agent/
 ```
 
 ### 2. Create a virtual environment and install dependencies
 
 ```bash
-cd /opt/lfc_agent
+cd /opt/sports_agent
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-dev.txt   # optional: mypy for type checking
+pip install -r requirements-dev.txt   # optional: mypy, black
 ./scripts/generate_stubs.sh           # optional: IDE/mypy stubs (not committed)
 ```
 
@@ -64,40 +64,48 @@ nano .env   # Fill in your keys and settings
 #### Getting your HA Long-Lived Token
 
 1. In HA, click your **Profile** (bottom-left avatar)
-2. Scroll to **Security -> Long-Lived Access Tokens**
-3. Click **Create Token**, name it `lfc_agent`
+2. Scroll to **Security → Long-Lived Access Tokens**
+3. Click **Create Token**, name it `sports_agent`
 4. Copy the token into `.env`
 
 #### Finding your HA notify service name
 
-1. In HA, go to **Developer Tools -> Services**
-2. Search for `notify` - look for `notify.mobile_app_`*
-3. The suffix after `mobile_app_` is your phone's name as registered in the Companion App
+1. In HA, go to **Developer Tools → Services**
+2. Search for `notify` — look for `notify.mobile_app_*`
+3. The suffix after `mobile_app_` is your phone's name in the Companion App
 
-### 4. Test it manually
+### 4. Configure teams
+
+Edit `teams.json` to enable/disable teams or add new ones. List configured teams:
+
+```bash
+python src/sports_agent.py list-teams
+```
+
+Optionally limit which teams run via `.env`:
+
+```bash
+TEAMS=liverpool-fc,india-cricket
+```
+
+### 5. Test it manually
 
 ```bash
 source venv/bin/activate
-source .env
-python lfc_agent.py
-```
-
-You should see it fetch fixtures on startup and schedule jobs. Check your phone for any match-day notifications if a match is in the next 14 days.
-
-To fetch today's news on demand:
-
-```bash
-python lfc_agent.py news                # print summary to terminal
-python lfc_agent.py news --notify       # print + push to Home Assistant
+python src/sports_agent.py                  # start scheduler for all active teams
+python src/sports_agent.py list-teams
+python src/sports_agent.py news                               # all teams
+python src/sports_agent.py news -t liverpool-fc              # one team
+python src/sports_agent.py news -t india-cricket --notify    # one team + HA push
 ```
 
 With Docker:
 
 ```bash
-docker compose run --rm lfc-agent python lfc_agent.py news
+docker compose run --rm lfc-agent python src/sports_agent.py news -t liverpool-fc
 ```
 
-### 5. Development tools (optional)
+### 6. Development tools (optional)
 
 **Formatting** with Black:
 
@@ -105,33 +113,23 @@ docker compose run --rm lfc-agent python lfc_agent.py news
 black .
 ```
 
-**Type checking** with mypy — APScheduler has no upstream types, so stubs are **autogenerated** locally into `typings/` (gitignored):
+**Type checking** with mypy — APScheduler stubs are autogenerated into `typings/` (gitignored):
 
 ```bash
 ./scripts/generate_stubs.sh
-mypy lfc_agent.py
+mypy src
 ```
-
-That runs `stubgen -p apscheduler` (from mypy) and applies small patches via `scripts/patch_stubs.py`. Re-run after upgrading APScheduler or setting up a fresh clone.
-
-In Cursor/VS Code, install the **Mypy Type Checker** extension; Pylance uses `typings/` via `python.analysis.stubPath`.
 
 ---
 
 ## Running as a Service (systemd)
 
 ```bash
-# Edit the service file with your username
-nano lfc-agent.service
-# Replace YOUR_USER with your actual Linux username
-
-# Install
+nano lfc-agent.service   # Replace YOUR_USER with your Linux username
 sudo cp lfc-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable lfc-agent
 sudo systemctl start lfc-agent
-
-# Check logs
 sudo journalctl -u lfc-agent -f
 ```
 
@@ -139,47 +137,43 @@ sudo journalctl -u lfc-agent -f
 
 ## Running with Docker
 
-Runtime dependencies live in `requirements.txt` and are installed at **image build time** (see `Dockerfile`). You only need a `.env` file at run time.
-
 ```bash
-cp .env.example .env   # fill in your keys
+cp .env.example .env
 docker compose up -d --build
 docker compose logs -f
 ```
-
-Or without Compose:
-
-```bash
-docker build -t lfc-agent .
-docker run -d --name lfc-agent --restart unless-stopped --env-file .env lfc-agent
-```
-
-> **Note:** `typings/` (generated stubs) and `.vscode/` are for local IDE type-checking only — they are not committed or copied into the Docker image.
-
-## Running on Home Assistant OS / Supervised
-
-If HA is your only server, run the Docker container above on the same host, or use the systemd service below.
-
----
-
-## Home Assistant Automation Alternative
-
-If you prefer HA-native automations instead of APScheduler, you can call this agent's logic from an HA **Shell Command** or **Python Script**, and use HA automations for timing. The `ha_notify()` function works standalone — just import and call it.
 
 ---
 
 ## Customization
 
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | — | Google AI Studio API key (required) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model with Google Search grounding |
+| `TIMEZONE` | `America/Chicago` | Your local timezone |
+| `TEAMS` | all enabled in `teams.json` | Comma-separated team ids to run |
+| `HA_NOTIFY_SERVICE` | `notify.mobile_app_*` | HA notify service |
+| Daily news time | 7:30 AM | Edit `CronTrigger` in `run_scheduler()` |
+| Fixture window | 14 days | Edit `FIXTURE_WINDOW_DAYS` in `src/teams.py` |
 
-| Variable            | Default                          | Description                                       |
-| ------------------- | -------------------------------- | ------------------------------------------------- |
-| `GEMINI_API_KEY`    | —                                | Google AI Studio API key (required)               |
-| `GEMINI_MODEL`      | `gemini-2.5-flash`               | Gemini model with Google Search grounding         |
-| `TIMEZONE`          | `America/Chicago`                | Your local timezone                               |
-| `HA_NOTIFY_SERVICE` | `notify.mobile_app_deepak_phone` | HA service to call                                |
-| Daily news time     | 7:30 AM                          | Edit `CronTrigger(hour=7, minute=30)` in `main()` |
-| Fixture window      | 14 days                          | Edit `fetch_lfc_fixtures()` prompt                |
+### Adding a team
 
+Add an entry to `teams.json`:
+
+```json
+{
+  "id": "my-team-slug",
+  "name": "My Team Name",
+  "sport": "football",
+  "emoji": "⚽",
+  "enabled": true,
+  "news_focus": ["match results", "injuries", "transfers"],
+  "match_phrase": "My Team vs {opponent}",
+  "match_day_label": "Match Day",
+  "kickoff_label": "Kickoff"
+}
+```
 
 ---
 
@@ -187,27 +181,23 @@ If you prefer HA-native automations instead of APScheduler, you can call this ag
 
 ```
 ┌─────────────────────────────────────────────┐
-│               LFC Agent (Python)            │
+│           Sports Agent (Python)             │
 │                                             │
-│  APScheduler                                │
-│  ├── 06:00 → fetch_lfc_fixtures()           │
-│  │           └── schedule_match_notifs()    │
-│  ├── 07:30 → send_daily_news()              │
-│  ├── 08:00 match day → HA notify (morning)  │
-│  └── T-15min → HA notify (kickoff alert)    │
+│  teams.json → liverpool-fc, india-cricket   │
 │                                             │
-│  Gemini API (gemini-2.5-flash)              │
-│  └── Google Search for news + fixtures      │
+│  APScheduler (per active team)              │
+│  ├── 06:00 → refresh fixtures               │
+│  ├── 07:30 → daily news brief               │
+│  ├── 08:00 match day → HA notify            │
+│  └── T-15min → HA notify                    │
+│                                             │
+│  Gemini API + Google Search                 │
 └──────────────────────┬──────────────────────┘
                        │ REST API
                        ▼
           ┌────────────────────────┐
           │    Home Assistant      │
-          │  notify.mobile_app_*   │
           └────────────┬───────────┘
-                       │ Push
                        ▼
                📱 Your Phone
 ```
-
-
