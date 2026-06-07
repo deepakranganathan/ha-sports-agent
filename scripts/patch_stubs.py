@@ -66,7 +66,9 @@ def patch_apscheduler_base() -> None:
         text = BASE_IMPORTS + text
 
     if OLD_ADD_JOB not in text:
-        raise RuntimeError("Expected add_job signature not found in base.pyi; stubgen output may have changed")
+        raise RuntimeError(
+            "Expected add_job signature not found in base.pyi; stubgen output may have changed"
+        )
 
     BASE_PYI.write_text(text.replace(OLD_ADD_JOB, NEW_ADD_JOB))
 

@@ -29,6 +29,7 @@ from apscheduler.triggers.date import DateTrigger
 # Config
 ############################################################################
 
+
 def _load_dotenv() -> None:
     """Load .env from the project root into os.environ (does not override existing vars)."""
     env_path = Path(__file__).resolve().parent / ".env"
@@ -47,15 +48,14 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-HA_URL        = os.environ.get("HA_URL", "http://homeassistant.local:8123")
-HA_TOKEN      = os.environ.get("HA_TOKEN", "")          # Long-lived HA token
-HA_NOTIFY     = os.environ.get("HA_NOTIFY_SERVICE", "notify.mobile_app_deepak_phone")
-GEMINI_MODEL  = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-TIMEZONE      = os.environ.get("TIMEZONE", "America/Chicago")
+HA_URL = os.environ.get("HA_URL", "http://homeassistant.local:8123")
+HA_TOKEN = os.environ.get("HA_TOKEN", "")  # Long-lived HA token
+HA_NOTIFY = os.environ.get("HA_NOTIFY_SERVICE", "notify.mobile_app_deepak_phone")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+TIMEZONE = os.environ.get("TIMEZONE", "America/Chicago")
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 log = logging.getLogger("lfc_agent")
 
@@ -109,9 +109,11 @@ def _gemini_web_search(user_prompt: str, system_instruction: str) -> str:
     )
     return (response.text or "").strip()
 
+
 ############################################################################
 # Home Assistant Notifications
 ############################################################################
+
 
 def ha_notify(title: str, message: str, data: dict[str, Any] | None = None) -> None:
     """Fire a Home Assistant notification via REST API."""
@@ -130,9 +132,11 @@ def ha_notify(title: str, message: str, data: dict[str, Any] | None = None) -> N
     except Exception as e:
         log.error(f"HA notification failed: {e}")
 
+
 ############################################################################
 # News Summary
 ############################################################################
+
 
 def fetch_lfc_news_summary() -> str:
     """Use Gemini with Google Search to get today's LFC news summary."""
@@ -184,10 +188,6 @@ def run_news_adhoc(*, notify: bool) -> None:
         log.info("News notification sent.")
 
 
-############################################################################
-# Fixture Fetcher
-############################################################################
-
 def fetch_lfc_fixtures() -> list[dict[str, str]]:
     """
     Use Gemini with Google Search to extract upcoming LFC fixtures.
@@ -238,11 +238,13 @@ def schedule_match_notifications(
                 kickoff_utc = kickoff_utc.replace(tzinfo=ZoneInfo("UTC"))
             kickoff_local = kickoff_utc.astimezone(tz)
 
-            opponent    = fixture.get("opponent", "Unknown")
+            opponent = fixture.get("opponent", "Unknown")
             competition = fixture.get("competition", "")
 
             # ── 8 AM match day notification ──────────────────────────────────
-            match_day_8am = kickoff_local.replace(hour=8, minute=0, second=0, microsecond=0)
+            match_day_8am = kickoff_local.replace(
+                hour=8, minute=0, second=0, microsecond=0
+            )
             if match_day_8am > now:
                 scheduler.add_job(
                     ha_notify,
@@ -250,12 +252,14 @@ def schedule_match_notifications(
                     args=[
                         f"⚽ LFC Match Day!",
                         f"Liverpool vs {opponent} today — {competition}.\n"
-                        f"Kickoff at {kickoff_local.strftime('%I:%M %p')} local time. YNWA! 🔴"
+                        f"Kickoff at {kickoff_local.strftime('%I:%M %p')} local time. YNWA! 🔴",
                     ],
                     id=f"matchday_{kickoff_local.date()}_{opponent}_8am",
-                    replace_existing=True
+                    replace_existing=True,
                 )
-                log.info(f"Scheduled 8AM notification for {opponent} on {match_day_8am}")
+                log.info(
+                    f"Scheduled 8AM notification for {opponent} on {match_day_8am}"
+                )
 
             # ── 15-min before kickoff notification ───────────────────────────
             pre_match = kickoff_local - timedelta(minutes=15)
@@ -266,10 +270,10 @@ def schedule_match_notifications(
                     args=[
                         f"🔴 Kickoff in 15 Minutes!",
                         f"Liverpool vs {opponent} — {competition} starts at "
-                        f"{kickoff_local.strftime('%I:%M %p')}. Get ready! YNWA! 🏆"
+                        f"{kickoff_local.strftime('%I:%M %p')}. Get ready! YNWA! 🏆",
                     ],
                     id=f"matchday_{kickoff_local.date()}_{opponent}_15min",
-                    replace_existing=True
+                    replace_existing=True,
                 )
                 log.info(f"Scheduled 15-min notification for {opponent} at {pre_match}")
 
@@ -296,7 +300,7 @@ def run_scheduler() -> None:
         send_daily_news,
         trigger=CronTrigger(hour=7, minute=30, timezone=tz),
         id="daily_lfc_news",
-        replace_existing=True
+        replace_existing=True,
     )
     log.info("Scheduled daily news at 7:30 AM")
 
@@ -305,7 +309,7 @@ def run_scheduler() -> None:
         lambda: refresh_fixtures(scheduler),
         trigger=CronTrigger(hour=6, minute=0, timezone=tz),
         id="daily_fixture_refresh",
-        replace_existing=True
+        replace_existing=True,
     )
     log.info("Scheduled fixture refresh at 6:00 AM")
 
