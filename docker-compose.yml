@@ -1,0 +1,6 @@
+services:
+  lfc-agent:
+    build: .
+    container_name: lfc-agent
+    restart: unless-stopped
+    env_file: .env

@@ -1,0 +1,5 @@
+.env
+venv/
+typings/
+__pycache__/
+.vscode/

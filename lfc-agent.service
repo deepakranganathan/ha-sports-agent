@@ -1,0 +1,18 @@
+[Unit]
+Description=LFC Daily Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/lfc_agent
+EnvironmentFile=/opt/lfc_agent/.env
+ExecStart=/opt/lfc_agent/venv/bin/python lfc_agent.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
