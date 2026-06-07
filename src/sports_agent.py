@@ -53,6 +53,9 @@ HA_TOKEN = os.environ.get("HA_TOKEN", "")  # Long-lived HA token
 HA_NOTIFY = os.environ.get("HA_NOTIFY_SERVICE", "notify.mobile_app_deepak_phone")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 TIMEZONE = os.environ.get("TIMEZONE", "America/Chicago")
+NEWS_MAX_OUTPUT_TOKENS = int(os.environ.get("NEWS_MAX_OUTPUT_TOKENS", "4096"))
+FIXTURE_MAX_OUTPUT_TOKENS = int(os.environ.get("FIXTURE_MAX_OUTPUT_TOKENS", "1024"))
+NOTIFY_MAX_CHARS = int(os.environ.get("NOTIFY_MAX_CHARS", "1024"))
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -96,18 +99,37 @@ def _generate_content(
     return models.generate_content(model=model, contents=contents, config=config)
 
 
-def _gemini_web_search(user_prompt: str, system_instruction: str) -> str:
+def _extract_response_text(response: types.GenerateContentResponse) -> str:
+    """Return model text and warn if the response hit token limits."""
+    if response.candidates:
+        finish = response.candidates[0].finish_reason
+        if finish is not None and "MAX_TOKENS" in str(finish):
+            log.warning(
+                "Gemini response truncated (finish_reason=%s). "
+                "Increase NEWS_MAX_OUTPUT_TOKENS if needed.",
+                finish,
+            )
+    return (response.text or "").strip()
+
+
+def _gemini_web_search(
+    user_prompt: str,
+    system_instruction: str,
+    *,
+    max_output_tokens: int,
+) -> str:
     """Call Gemini with Google Search grounding and return response text."""
     response = _generate_content(
         model=GEMINI_MODEL,
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            max_output_tokens=1024,
+            max_output_tokens=max_output_tokens,
             tools=[types.Tool(google_search=types.GoogleSearch())],
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
-    return (response.text or "").strip()
+    return _extract_response_text(response)
 
 
 def _today_strings() -> tuple[str, str]:
@@ -151,13 +173,18 @@ def fetch_news_summary(team: Team) -> str:
     summary = _gemini_web_search(
         user_prompt=team.news_user_prompt(today_long),
         system_instruction=team.news_system_instruction(),
+        max_output_tokens=NEWS_MAX_OUTPUT_TOKENS,
     )
     return summary if summary else "No news summary available."
 
 
 def send_news_notification(team: Team, summary: str) -> str:
     """Push a news summary to Home Assistant."""
-    short = summary[:500] + "..." if len(summary) > 500 else summary
+    short = (
+        summary[:NOTIFY_MAX_CHARS] + "..."
+        if len(summary) > NOTIFY_MAX_CHARS
+        else summary
+    )
     ha_notify(
         title=team.briefing_title(),
         message=short,
@@ -196,6 +223,7 @@ def fetch_fixtures(team: Team) -> list[dict[str, str]]:
     raw = _gemini_web_search(
         user_prompt=team.fixtures_user_prompt(today_short),
         system_instruction=team.fixtures_system_instruction(),
+        max_output_tokens=FIXTURE_MAX_OUTPUT_TOKENS,
     )
 
     try:

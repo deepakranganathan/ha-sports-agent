@@ -39,6 +39,7 @@ class Team:
             "Search for the latest news and produce a concise daily briefing. "
             f"Focus on: {focus}. "
             "Be factual, concise, and well-structured. Use bullet points. "
+            "Write a complete summary — never stop mid-sentence. "
             "Always end with the next upcoming match or fixture details if available."
         )
 
