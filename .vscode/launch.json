@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Sports Agent: news (all teams)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/sports_agent.py",
+      "console": "integratedTerminal",
+      "args": ["news"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Sports Agent: news (Liverpool)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/sports_agent.py",
+      "console": "integratedTerminal",
+      "args": ["news", "-t", "liverpool-fc"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Sports Agent: news (India cricket)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/sports_agent.py",
+      "console": "integratedTerminal",
+      "args": ["news", "-t", "india-cricket"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Sports Agent: scheduler",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/sports_agent.py",
+      "console": "integratedTerminal",
+      "args": ["run"],
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

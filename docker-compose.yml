@@ -1,6 +1,0 @@
-services:
-  ha-sports-agent:
-    build: .
-    container_name: ha-sports-agent
-    restart: unless-stopped
-    env_file: .env
