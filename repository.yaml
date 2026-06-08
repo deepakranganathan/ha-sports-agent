@@ -1,17 +1,3 @@
 name: Sports Team Agent
 url: https://github.com/deepakranganathan/ha-sports-agent
 maintainer: Deepak Ranganathan
-version: "1.0.0"
-slug: sports_agent
-description: >-
-  Daily sports news briefings and match-day notifications for your teams,
-  powered by Google Gemini and delivered through Home Assistant.
-arch:
-  - aarch64
-  - amd64
-  - armhf
-  - armv7
-startup: services
-boot: auto
-init: false
-homeassistant_api: true
