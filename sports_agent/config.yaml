@@ -1,5 +1,5 @@
 name: Sports Team Agent
-version: "1.0.2"
+version: "1.0.3"
 slug: sports_agent
 description: >-
   Daily sports news briefings and match-day notifications for your teams,
