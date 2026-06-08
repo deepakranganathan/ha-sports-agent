@@ -1,1 +1,4 @@
-../requirements.txt
+google-genai>=1.0.0
+apscheduler>=3.10.4
+requests>=2.31.0
+click>=8.1.0
