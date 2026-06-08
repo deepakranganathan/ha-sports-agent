@@ -1,6 +1,6 @@
 services:
-  lfc-agent:
+  ha-sports-agent:
     build: .
-    container_name: lfc-agent
+    container_name: ha-sports-agent
     restart: unless-stopped
     env_file: .env

@@ -10,4 +10,4 @@ __pycache__/
 typings/
 pyrightconfig.json
 README.md
-lfc-agent.service
+ha-sports-agent.service

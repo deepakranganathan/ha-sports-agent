@@ -1,0 +1,22 @@
+configuration:
+  gemini_api_key:
+    name: Gemini API key
+    description: >-
+      Google AI Studio API key (https://aistudio.google.com/apikey).
+      Required for news and fixture lookups.
+  timezone:
+    name: Timezone
+    description: IANA timezone for scheduled briefings and match alerts (e.g. America/Chicago).
+  ha_notify_service:
+    name: Notify service
+    description: >-
+      Home Assistant notify service for your phone
+      (Developer Tools → Services → notify.mobile_app_*).
+  teams:
+    name: Teams filter
+    description: >-
+      Optional comma-separated team ids from teams.json.
+      Leave empty to run all enabled teams.
+  gemini_model:
+    name: Gemini model
+    description: Model with Google Search grounding (default gemini-2.5-flash).

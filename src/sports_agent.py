@@ -48,8 +48,20 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-HA_URL = os.environ.get("HA_URL", "http://homeassistant.local:8123")
-HA_TOKEN = os.environ.get("HA_TOKEN", "")  # Long-lived HA token
+
+def _resolve_ha_credentials() -> tuple[str, str]:
+    """Prefer explicit HA_URL/HA_TOKEN; fall back to Supervisor proxy in add-ons."""
+    url = os.environ.get("HA_URL", "").strip()
+    token = os.environ.get("HA_TOKEN", "").strip()
+    supervisor = os.environ.get("SUPERVISOR_TOKEN", "").strip()
+    if token and url:
+        return url, token
+    if supervisor:
+        return url or "http://supervisor/core", supervisor
+    return url or "http://homeassistant.local:8123", token
+
+
+HA_URL, HA_TOKEN = _resolve_ha_credentials()
 HA_NOTIFY = os.environ.get("HA_NOTIFY_SERVICE", "notify.mobile_app_deepak_phone")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 TIMEZONE = os.environ.get("TIMEZONE", "America/Chicago")
@@ -137,6 +149,11 @@ def _today_strings() -> tuple[str, str]:
     return now.strftime("%B %d, %Y"), now.strftime("%Y-%m-%d")
 
 
+def _yesterday_long() -> str:
+    yesterday = datetime.now(ZoneInfo(TIMEZONE)) - timedelta(days=1)
+    return yesterday.strftime("%B %d, %Y")
+
+
 ############################################################################
 # Home Assistant Notifications
 ############################################################################
@@ -171,7 +188,7 @@ def fetch_news_summary(team: Team) -> str:
     today_long, _ = _today_strings()
 
     summary = _gemini_web_search(
-        user_prompt=team.news_user_prompt(today_long),
+        user_prompt=team.news_user_prompt(today_long, _yesterday_long()),
         system_instruction=team.news_system_instruction(),
         max_output_tokens=NEWS_MAX_OUTPUT_TOKENS,
     )

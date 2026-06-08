@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TEAMS_FILE = PROJECT_ROOT / "teams.json"
+TEAMS_FILE = Path(os.environ.get("TEAMS_JSON_PATH", PROJECT_ROOT / "teams.json"))
 FIXTURE_WINDOW_DAYS = 14
 
 
@@ -37,16 +37,22 @@ class Team:
         return (
             f"You are a {self.name} news assistant ({self.sport}). "
             "Search for the latest news and produce a concise daily briefing. "
-            f"Focus on: {focus}. "
-            "Be factual, concise, and well-structured. Use bullet points. "
+            "Structure the briefing with these sections in order:\n"
+            "1. **Match Update** — exactly ONE line: if a match is live/in progress, "
+            "state the live score and status; otherwise state yesterday's final result "
+            "(or the most recent completed result if there was no match yesterday).\n"
+            f"2. Additional sections covering: {focus}.\n"
+            "Be factual, concise, and well-structured. Use bullet points in sections "
+            "after Match Update. "
             "Write a complete summary — never stop mid-sentence. "
             "Always end with the next upcoming match or fixture details if available."
         )
 
-    def news_user_prompt(self, today: str) -> str:
+    def news_user_prompt(self, today: str, yesterday: str) -> str:
         return (
             f"Search the web and give me a {self.name} daily news summary for {today}. "
-            f"Include the latest {self.sport} news relevant to the team."
+            f"Yesterday was {yesterday}. "
+            f"Include a Match Update section first, then the latest {self.sport} news."
         )
 
     def fixtures_system_instruction(self) -> str:

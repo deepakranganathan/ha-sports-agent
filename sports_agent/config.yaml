@@ -1,0 +1,31 @@
+name: Sports Team Agent
+version: "1.0.0"
+slug: sports_agent
+description: >-
+  Daily sports news briefings and match-day notifications for your teams,
+  powered by Google Gemini and delivered through Home Assistant.
+url: https://github.com/deepakranganathan/ha-sports-agent
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+startup: services
+boot: auto
+init: false
+homeassistant_api: true
+options:
+  gemini_api_key: ""
+  timezone: America/Chicago
+  ha_notify_service: notify.mobile_app_phone
+  teams: ""
+  gemini_model: gemini-2.5-flash
+schema:
+  gemini_api_key: password
+  timezone: str
+  ha_notify_service: str
+  teams: str?
+  gemini_model: str?
+map:
+  - type: addon_config
+    read_only: false

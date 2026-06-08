@@ -4,7 +4,7 @@
       "id": "liverpool-fc",
       "name": "Liverpool FC",
       "sport": "football",
-      "emoji": "🔴",
+      "emoji": "⚽",
       "enabled": true,
       "news_focus": [
         "match results",
@@ -30,6 +30,22 @@
         "upcoming fixtures and series schedule"
       ],
       "match_phrase": "India vs {opponent}",
+      "match_day_label": "Match Day",
+      "kickoff_label": "Start"
+    },
+    {
+      "id": "argentina-football",
+      "name": "Argentina football team",
+      "sport": "football",
+      "emoji": "⚽",
+      "enabled": true,
+      "news_focus": [
+        "recent match and series results",
+        "injury and squad updates",
+        "selection and captaincy news",
+        "upcoming fixtures and series schedule"
+      ],
+      "match_phrase": "Argentina vs {opponent}",
       "match_day_label": "Match Day",
       "kickoff_label": "Start"
     }

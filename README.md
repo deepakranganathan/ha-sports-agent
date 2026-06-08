@@ -10,7 +10,7 @@ A lightweight AI agent that delivers daily news summaries and match notification
 
 | Feature | Details |
 | --- | --- |
-| **Daily News Brief** | Every morning at **7:30 AM**, Gemini searches the web for each active team's latest news and sends summaries to your phone |
+| **Daily News Brief** | Every morning at **7:30 AM**, Gemini searches the web for each active team — **Match Update** (live or yesterday) plus news — and sends to your phone |
 | **Match Day 8 AM Alert** | On match days, a morning reminder with start time |
 | **15-Min Pre-Start Alert** | 15 minutes before each fixture, a push notification fires |
 | **Ad-hoc News** | `python src/sports_agent.py news` for all teams, or `-t liverpool-fc` for one |
@@ -102,7 +102,7 @@ python src/sports_agent.py news -t india-cricket --notify    # one team + HA pus
 With Docker:
 
 ```bash
-docker compose run --rm lfc-agent python src/sports_agent.py news -t liverpool-fc
+docker compose run --rm ha-sports-agent python src/sports_agent.py news -t liverpool-fc
 ```
 
 ### 6. Development tools (optional)
@@ -122,15 +122,43 @@ mypy src
 
 ---
 
+## Running as a Home Assistant Add-on (recommended on HA OS)
+
+The native way to run this on Home Assistant OS or Supervised is the **Sports Team Agent** add-on in the `sports_agent/` folder. It uses the Supervisor API proxy, so you do **not** need a long-lived HA token.
+
+### Option A — Install from your GitHub repository
+
+1. Push this repo to GitHub and update `repository.yaml` with your repo URL.
+2. In HA: **Settings → Add-ons → Add-on Store** → **⋮** → **Repositories**
+3. Add `https://github.com/deepakranganathan/ha-sports-agent`
+4. Refresh the store, open **Sports Team Agent**, install, and start.
+5. On the **Configuration** tab set:
+   - **Gemini API key** (required)
+   - **Timezone** (e.g. `America/Chicago`)
+   - **Notify service** (e.g. `notify.mobile_app_your_phone`)
+   - **Teams filter** (optional, comma-separated ids from `teams.json`)
+
+### Option B — Local add-on (no GitHub)
+
+Copy the `sports_agent/` folder into your HA `addons` share (Samba/SSH), then **Settings → Add-ons → Check for updates** and install **Sports Team Agent** from the **Local add-ons** section.
+
+### Customizing teams in the add-on
+
+On first start, a default `teams.json` is written to the add-on data directory. Edit it via **Studio Code Server**, **SSH & Web Terminal**, or the `addon_configs/sports_agent` folder, then restart the add-on.
+
+See `sports_agent/DOCS.md` for full add-on documentation.
+
+---
+
 ## Running as a Service (systemd)
 
 ```bash
-nano lfc-agent.service   # Replace YOUR_USER with your Linux username
-sudo cp lfc-agent.service /etc/systemd/system/
+nano ha-sports-agent.service   # Replace YOUR_USER with your Linux username
+sudo cp ha-sports-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable lfc-agent
-sudo systemctl start lfc-agent
-sudo journalctl -u lfc-agent -f
+sudo systemctl enable ha-sports-agent
+sudo systemctl start ha-sports-agent
+sudo journalctl -u ha-sports-agent -f
 ```
 
 ---
