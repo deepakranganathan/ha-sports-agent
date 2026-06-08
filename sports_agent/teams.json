@@ -1,1 +1,53 @@
-../teams.json
+{
+  "teams": [
+    {
+      "id": "liverpool-fc",
+      "name": "Liverpool FC",
+      "sport": "football",
+      "emoji": "⚽",
+      "enabled": true,
+      "news_focus": [
+        "match results",
+        "injuries",
+        "transfers",
+        "manager quotes",
+        "upcoming fixtures"
+      ],
+      "match_phrase": "Liverpool vs {opponent}",
+      "match_day_label": "Match Day",
+      "kickoff_label": "Kickoff"
+    },
+    {
+      "id": "india-cricket",
+      "name": "India men's cricket team",
+      "sport": "cricket",
+      "emoji": "🏏",
+      "enabled": true,
+      "news_focus": [
+        "recent match and series results",
+        "injury and squad updates",
+        "selection and captaincy news",
+        "upcoming fixtures and series schedule"
+      ],
+      "match_phrase": "India vs {opponent}",
+      "match_day_label": "Match Day",
+      "kickoff_label": "Start"
+    },
+    {
+      "id": "argentina-football",
+      "name": "Argentina football team",
+      "sport": "football",
+      "emoji": "⚽",
+      "enabled": true,
+      "news_focus": [
+        "recent match and series results",
+        "injury and squad updates",
+        "selection and captaincy news",
+        "upcoming fixtures and series schedule"
+      ],
+      "match_phrase": "Argentina vs {opponent}",
+      "match_day_label": "Match Day",
+      "kickoff_label": "Start"
+    }
+  ]
+}
