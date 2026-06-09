@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a team",
+        "description": "Choose a preset team or configure a custom team.",
+        "data": {
+          "preset": "Team"
+        }
+      },
+      "team": {
+        "title": "Team details",
+        "description": "Configure how this team is tracked ({preset}).",
+        "data": {
+          "id": "Team id",
+          "name": "Display name",
+          "sport": "Sport",
+          "emoji": "Emoji",
+          "news_focus": "News topics (comma-separated)",
+          "match_phrase": "Match phrase (use {opponent})",
+          "match_day_label": "Match day label",
+          "kickoff_label": "Kickoff label",
+          "enabled": "Enabled"
+        }
+      }
+    },
+    "error": {
+      "base": "Invalid team configuration."
+    },
+    "abort": {
+      "already_configured": "This team is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Edit team",
+        "data": {
+          "name": "Display name",
+          "sport": "Sport",
+          "emoji": "Emoji",
+          "news_focus": "News topics (comma-separated)",
+          "match_phrase": "Match phrase (use {opponent})",
+          "match_day_label": "Match day label",
+          "kickoff_label": "Kickoff label",
+          "enabled": "Enabled"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "schedule": {
+        "name": "Schedule"
+      }
+    }
+  }
+}

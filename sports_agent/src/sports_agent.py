@@ -23,11 +23,13 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from pathlib import Path
+
 from teams import PROJECT_ROOT, Team, active_teams, load_teams
 
-############################################################################
-# Config
-############################################################################
+SCHEDULES_FILE = Path(
+    os.environ.get("SCHEDULES_JSON_PATH", "/config/sports_agent/schedules.json")
+)
 
 
 def _load_dotenv() -> None:
@@ -154,32 +156,25 @@ def _yesterday_long() -> str:
     return yesterday.strftime("%B %d, %Y")
 
 
-############################################################################
-# Home Assistant Notifications
-############################################################################
+def _ha_headers() -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {HA_TOKEN}",
+        "Content-Type": "application/json",
+    }
 
 
 def ha_notify(title: str, message: str, data: dict[str, Any] | None = None) -> None:
     """Fire a Home Assistant notification via REST API."""
     url = f"{HA_URL}/api/services/{HA_NOTIFY.replace('.', '/', 1)}"
-    headers = {
-        "Authorization": f"Bearer {HA_TOKEN}",
-        "Content-Type": "application/json",
-    }
     payload: dict[str, Any] = {"title": title, "message": message}
     if data:
         payload["data"] = data
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=10)
+        r = requests.post(url, headers=_ha_headers(), json=payload, timeout=10)
         r.raise_for_status()
         log.info(f"HA notification sent: {title}")
     except Exception as e:
         log.error(f"HA notification failed: {e}")
-
-
-############################################################################
-# News Summary
-############################################################################
 
 
 def fetch_news_summary(team: Team) -> str:
@@ -255,6 +250,79 @@ def fetch_fixtures(team: Team) -> list[dict[str, str]]:
         return []
 
 
+def _fixture_rows(team: Team, fixtures: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Normalize fixture dicts with local kickoff times for HA attributes."""
+    tz = ZoneInfo(TIMEZONE)
+    rows: list[dict[str, str]] = []
+    for fixture in fixtures:
+        try:
+            kickoff_utc = datetime.fromisoformat(fixture["kickoff_utc"])
+            if kickoff_utc.tzinfo is None:
+                kickoff_utc = kickoff_utc.replace(tzinfo=ZoneInfo("UTC"))
+            kickoff_local = kickoff_utc.astimezone(tz)
+            opponent = fixture.get("opponent", "Unknown")
+            competition = fixture.get("competition", "")
+            rows.append(
+                {
+                    "opponent": opponent,
+                    "competition": competition,
+                    "kickoff_utc": kickoff_utc.isoformat(),
+                    "kickoff_local": kickoff_local.strftime("%Y-%m-%d %I:%M %p"),
+                    "matchup": team.match_phrase.format(opponent=opponent),
+                }
+            )
+        except Exception as e:
+            log.error("Error parsing fixture for %s: %s — %s", team.name, fixture, e)
+    rows.sort(key=lambda row: row["kickoff_utc"])
+    return rows
+
+
+def _schedule_payload(team: Team, fixtures: list[dict[str, str]]) -> dict[str, Any]:
+    """Build schedule payload for one team."""
+    rows = _fixture_rows(team, fixtures)
+    now_iso = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
+
+    if rows:
+        next_row = rows[0]
+        state = (
+            f"{next_row['matchup']} — {next_row['kickoff_local']} "
+            f"({next_row['competition']})".strip()
+        )
+        next_kickoff_utc = next_row["kickoff_utc"]
+        next_opponent = next_row["opponent"]
+        next_competition = next_row["competition"]
+    else:
+        state = "No upcoming matches"
+        next_kickoff_utc = None
+        next_opponent = None
+        next_competition = None
+
+    return {
+        "state": state,
+        "team_id": team.id,
+        "team_name": team.name,
+        "sport": team.sport,
+        "fixture_count": len(rows),
+        "fixtures": rows,
+        "next_opponent": next_opponent,
+        "next_kickoff_utc": next_kickoff_utc,
+        "next_competition": next_competition,
+        "last_updated": now_iso,
+    }
+
+
+def write_schedules_file(schedules: dict[str, dict[str, Any]]) -> None:
+    """Write schedule data for the HA integration to read."""
+    try:
+        SCHEDULES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SCHEDULES_FILE.write_text(
+            json.dumps(schedules, indent=2) + "\n", encoding="utf-8"
+        )
+        log.info("Wrote schedules for %d team(s) to %s", len(schedules), SCHEDULES_FILE)
+    except OSError as e:
+        log.error("Failed to write schedules file %s: %s", SCHEDULES_FILE, e)
+
+
 def schedule_match_notifications(
     scheduler: BlockingScheduler, team: Team, fixtures: list[dict[str, str]]
 ) -> None:
@@ -321,9 +389,18 @@ def schedule_match_notifications(
             log.error("Error scheduling fixture for %s: %s — %s", team.name, fixture, e)
 
 
-def refresh_fixtures(scheduler: BlockingScheduler, team: Team) -> None:
+def refresh_fixtures(
+    scheduler: BlockingScheduler,
+    team: Team,
+    schedules: dict[str, dict[str, Any]] | None = None,
+) -> None:
     """Refresh fixtures for one team and reschedule match notifications."""
     fixtures = fetch_fixtures(team)
+    payload = _schedule_payload(team, fixtures)
+    if schedules is not None:
+        schedules[team.id] = payload
+    else:
+        write_schedules_file({team.id: payload})
     if fixtures:
         schedule_match_notifications(scheduler, team, fixtures)
     else:
@@ -332,8 +409,10 @@ def refresh_fixtures(scheduler: BlockingScheduler, team: Team) -> None:
 
 def refresh_all_fixtures(scheduler: BlockingScheduler) -> None:
     """Refresh fixtures for all active teams."""
+    schedules: dict[str, dict[str, Any]] = {}
     for team in active_teams():
-        refresh_fixtures(scheduler, team)
+        refresh_fixtures(scheduler, team, schedules)
+    write_schedules_file(schedules)
 
 
 def run_scheduler() -> None:
@@ -341,7 +420,7 @@ def run_scheduler() -> None:
     teams = active_teams()
     if not teams:
         raise click.ClickException(
-            "No active teams configured. Enable teams in teams.json or set TEAMS in .env."
+            "No active teams configured. Add teams via the Sports Team Agent integration."
         )
 
     tz = ZoneInfo(TIMEZONE)

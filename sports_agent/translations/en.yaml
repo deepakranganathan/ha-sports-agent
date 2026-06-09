@@ -12,11 +12,6 @@ configuration:
     description: >-
       Home Assistant notify service for your phone
       (Developer Tools → Services → notify.mobile_app_*).
-  teams:
-    name: Teams filter
-    description: >-
-      Optional comma-separated team ids from teams.json.
-      Leave empty to run all enabled teams.
   gemini_model:
     name: Gemini model
     description: Model with Google Search grounding (default gemini-2.5-flash).
